@@ -1,16 +1,41 @@
-# React + Vite
+# Base44 React — platform frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 (Vite) rebuild of the base44 app UI — same pages, same logic,
+tokens **from base44 production** (`public/tokens.css`, fonts woff2 pulled
+from base44's own endpoints).
 
-Currently, two official plugins are available:
+## Pages (hash routes)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| route | screen |
+|---|---|
+| `#/#/login` | auth: signup/login toggle + demo workspace button |
+| `#/` | home: hero prompt + apps grid + credits widget |
+| `#/app/:id` | **builder**: agent chat (steps timeline) + tabs Preview / Code / Data / Logs / Publish (+ custom domain) |
+| `#/explore` | templates: CRM, Task Manager, Blog, Expense Tracker, Notes |
+| `#/settings` | appearance (light/dark/system, pre-paint contract) · language · **members & invite** · **plan upgrade** · session |
+| `runtime.html#app=:id` | app preview runtime (entity tables + add-record, accent-themed) |
 
-## React Compiler
+## Run (dev)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```sh
+pnpm install
+# backend: /root/base44-platform/server.py on :8510 (proxies /api,/p,/ws)
+pnpm dev            # → http://localhost:8520
+```
 
-## Expanding the Oxlint configuration
+## Build & serve from the backend
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```sh
+pnpm build          # → dist/
+# base44-platform/server.py auto-detects ../base44-react/dist and serves it
+cd ../base44-platform && python3 server.py   # → http://localhost:8510
+```
+
+## Verified
+
+- [x] `pnpm build` clean (243 KB JS, gzip 75.6 KB)
+- [x] `pnpm lint` — 0 errors (few fast-refresh warnings)
+- [x] login → home → create app (agent templates) → builder tabs → publish → `/p/:slug`
+- [x] credits decrement per agent turn (0.4), 402 when dry
+- [x] members invite list, workspace create + switcher, billing subscribe (pro=100 credits)
+- [x] domain verify flow: pending → verified after 3s (mock TXT)
