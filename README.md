@@ -39,3 +39,17 @@ cd ../base44-platform && python3 server.py   # → http://localhost:8510
 - [x] credits decrement per agent turn (0.4), 402 when dry
 - [x] members invite list, workspace create + switcher, billing subscribe (pro=100 credits)
 - [x] domain verify flow: pending → verified after 3s (mock TXT)
+
+## AI agent UI (SSE streaming + live preview)
+
+`Builder.jsx` consumes `POST /api/apps/:id/agent/stream` (text/event-stream):
+
+| event | UI behavior |
+|---|---|
+| `start` | bubble tagged with model |
+| `thinking` | `✳ think-row` in the chat (model plan, streamed) |
+| `tool` | chip: name + target + result (`upsert_entity Invoices → created`) |
+| `preview` | **runtime iframe bumps `rev=` → live preview re-render** |
+| `done` | final reply + credits refresh + app reload |
+
+Fallback: when AI keys are absent (`B44_DISABLE_AI=1`), `step` events render as think-rows.

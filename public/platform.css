@@ -126,3 +126,18 @@ pre.code{background:var(--neutral-950);color:#e6e2df;border-radius:var(--radius-
 @keyframes fadein{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 @media (max-width:900px){.chat{width:200px;flex-basis:200px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ── AI agent chat: thinking ↔ tool calls ↔ live preview ───────────── */
+.think-row{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:var(--fg-muted);padding:6px 10px;border-radius:var(--radius-md);background:rgba(125,125,135,.08);margin:4px 0}
+.think-row .tdot{color:var(--orange-500);font-weight:700;flex:none}
+.think-row.warn{color:var(--orange-600)}
+.tool-chip{display:inline-flex;gap:6px;align-items:center;font-size:11.5px;padding:3px 10px;border-radius:999px;background:var(--surface-elevated);border:var(--bw-regular) solid var(--border-default);margin:3px 6px 3px 0}
+.tool-chip b{font-family:var(--font-mono),monospace;font-size:11px;color:var(--orange-600)}
+.tool-chip .tres{color:var(--fg-muted)}
+.msg.ai.live{animation:msg-pulse 1.3s ease infinite}
+.dots{display:inline-flex;gap:3px;margin-top:6px}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--orange-500);animation:dotblink 1.2s infinite ease-in-out}
+.dots i:nth-child(2){animation-delay:.2s}
+.dots i:nth-child(3){animation-delay:.4s}
+@keyframes dotblink{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes msg-pulse{50%{opacity:.82}}
