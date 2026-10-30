@@ -1,6 +1,6 @@
 // components/Chrome.jsx — sidebar + icons (base44 tokens)
 import { api, LS_WS, esc } from '../lib/api.js'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export const icons = {
   logo: 'M12 2.5 13.6 8.4 19.5 10 13.6 11.6 12 17.5 10.4 11.6 4.5 10l5.9-1.6z',
@@ -27,8 +27,8 @@ export const I = ({ d, s = 16, w = 2, fill = 'none' }) => (
 
 export const useCredits = () => {
   const [c, setC] = useState(null)
-  const refresh = () => api('/api/credits').then(setC).catch(() => {})
-  useEffect(refresh, [])
+  const refresh = useCallback(() => api('/api/credits').then(setC).catch(() => {}), [])
+  useEffect(() => { refresh() }, [refresh])
   return [c, setC, refresh]
 }
 

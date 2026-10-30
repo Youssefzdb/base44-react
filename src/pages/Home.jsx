@@ -8,7 +8,7 @@ export default function Home({ me, ws, credits, _refreshCredits, workspaces, onS
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const load = () => api('/api/workspace_apps').then(setApps).catch(() => setApps([]))
-  useEffect(load, [ws?.id])
+  useEffect(() => { load() }, [ws?.id])
   const create = async () => {
     if (!prompt.trim()) return
     setBusy(true)
