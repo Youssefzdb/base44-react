@@ -1,5 +1,5 @@
 // pages/Builder.jsx — agent chat (SSE: think → tools → preview) + Preview/Code/Data/Logs/Publish
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api, esc } from '../lib/api.js'
 import { icons, I } from '../components/Chrome.jsx'
 
@@ -14,12 +14,19 @@ export default function Builder({ onCredits }) {
   const [domain, setDomain] = useState('')
   const [busy, setBusy] = useState(false)
   const [pv, setPv] = useState(0) // bump → live preview reload after backend file regen
+  const refreshT = useRef(0)
 
-  useEffect(() => { if (id) api(`/api/apps/${id}`).then(a => { setApp(a); setFile(Object.keys(a.files || {})[0] || null) }).catch(() => { alert('App not found'); location.hash = '#/' }) }, [id])
+  useEffect(() => { if (id) api(`/api/apps/${id}`).then(openApp).catch(() => { alert('App not found'); location.hash = '#/' }) }, [id])
 
   const openApp = a => {
     setApp(a)
-    setFile(Object.keys(a.files || {})[0] || null)
+    const src = a.mode === 'website' ? Object.keys(a.gen_files || {}) : Object.keys(a.files || {})
+    setFile(f => (f && src.includes(f) ? f : src[0] || null))
+  }
+
+  const queueRefresh = () => {          // ← file written: refresh app (code tab) debounced
+    clearTimeout(refreshT.current)
+    refreshT.current = setTimeout(() => { api(`/api/apps/${id}`).then(openApp).catch(() => {}) }, 750)
   }
 
   const patchLast = f => setMsgs(m => { const c = [...m]; c[c.length - 1] = f(c[c.length - 1]); return c })
@@ -39,7 +46,7 @@ export default function Builder({ onCredits }) {
       else if (ev.type === 'step') patchLast(ai => ({ ...ai, thinking: [...(ai.thinking || []), ev.text] }))
       else if (ev.type === 'notice') patchLast(ai => ({ ...ai, notice: ev.text }))
       else if (ev.type === 'tool') patchLast(ai => ({ ...ai, tools: [...(ai.tools || []), { name: ev.name, args: ev.args, result: ev.result }] }))
-      else if (ev.type === 'preview') setPv(p => p + 1)             // live preview reload
+      else if (ev.type === 'preview') { setPv(p => p + 1); queueRefresh() }   // live preview reload + code refresh
       else if (ev.type === 'error') patchLast(ai => ({ ...ai, text: ev.text, live: false }))
       else if (ev.type === 'done') {
         patchLast(ai => ({ ...ai, steps: ev.steps, text: ev.reply || 'Done — changes applied.', mode: ev.mode, live: false }))
@@ -109,12 +116,19 @@ export default function Builder({ onCredits }) {
     </div>
   ))
 
+  const srcFiles = app.mode === 'website'
+    ? (Object.keys(app.gen_files || {}) || [])
+    : files
+  const curCode = (srcFiles && srcFiles.includes(curFile)) ? curFile : (srcFiles[0] || null)
+  const contents = app.mode === 'website' ? (app.gen_files || {}) : (app.files || {})
+
   return (
     <div className="main" style={{ height: '100vh' }}>
       <div className="work-head">
         <button className="btn btn-ghost" onClick={() => { location.hash = '#/' }}><I d={icons.back} /></button>
         <b style={{ fontSize: 14 }}>{esc(app.name)}</b>
         <span className={'vis' + (app.state === 'published' ? ' published' : '')} style={{ marginLeft: 4 }}>{app.state === 'published' ? 'Live' : 'Preview'}</span>
+        {app.mode === 'website' && <span className="wb-badge">Site</span>}
         <div className="tabs">
           {TABS.map(([k, l]) => <button key={k} className={'tab' + (curTab === k ? ' active' : '')} onClick={() => setTab(k)}>{l}</button>)}
         </div>
@@ -161,10 +175,10 @@ export default function Builder({ onCredits }) {
             )}
             {curTab === 'code' && (
               <div className="pane">
-                {files.length ? (
+                {srcFiles.length ? (
                   <>
-                    <div className="code-tabs">{files.map(f => <button key={f} className={'code-file' + (f === curFile ? ' active' : '')} onClick={() => setFile(f)}>{esc(f)}</button>)}</div>
-                    <pre className="code">{esc(app.files[curFile] || '')}</pre>
+                    <div className="code-tabs">{srcFiles.map(f => <button key={f} className={'code-file' + (f === curCode ? ' active' : '')} onClick={() => setFile(f)}>{esc(f)}</button>)}</div>
+                    <pre className="code">{esc(contents[curCode] || '')}</pre>
                   </>
                 ) : <div style={{ color: 'var(--stone-500)', padding: 20 }}>No code yet — build the app first.</div>}
               </div>

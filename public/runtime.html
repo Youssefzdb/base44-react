@@ -19,57 +19,163 @@
       .add label{display:block;font-size:11.5px;font-weight:600;color:var(--stone-600);margin:8px 0 3px}
       .add input.frmin{width:100%;padding:7px 9px;border-radius:var(--radius-md);border:var(--bw-regular) solid var(--stone-300);font-size:13px}
       .empty{color:var(--stone-500);padding:30px;text-align:center}
+      /* ── website mode (AI-generated React sites) ── */
+      body.site-mode{background:#fff}
+      body.site-mode header,body.site-mode .tabs,body.site-mode main{display:none}
+      #site-root{display:none}
+      body.site-mode #site-root{display:block;min-height:100vh}
+      #werr{display:none;margin:30px;padding:18px 22px;border-radius:14px;background:#2b0b0b;color:#ffd9d9;font-family:var(--font-mono,monospace);font-size:12.5px;white-space:pre-wrap;border:1px solid #b34545;max-width:900px}
+      #wload{display:none;padding:60px;text-align:center;color:var(--stone-500);font-size:14px}
+      #wload .spin{display:inline-block;width:26px;height:26px;border-radius:50%;border:3px solid var(--stone-200);border-top-color:var(--accent,#ff773c);animation:spin .9s linear infinite;margin-bottom:12px}
+      @keyframes spin{to{transform:rotate(360deg)}}
     </style>
+    <script src="/vendor/react.production.min.js" crossorigin></script>
+    <script src="/vendor/react-dom.production.min.js" crossorigin></script>
+    <script src="/vendor/babel.min.js"></script>
   </head>
   <body>
     <header><b id="app-name">App</b></header>
     <div class="tabs" id="tabs"></div><main id="main"></main>
+    <div id="wload"><div class="spin"></div><br />Compiling the generated website…</div>
+    <div id="werr"></div>
+    <div id="site-root"></div>
     <script>
       (() => {
-        const page = parseInt((location.hash.match(/#p=(\d)/) || [0, 1])[1] || 1);
-        const m = location.hash.match(/#app=([\w-]+)/);
-        if (!m) { document.body.innerHTML = '<div class="empty">published app only</div>'; return; }
-        fetch(`/api/apps/${m[1]}`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('b44_token') } })
-          .then(r => r.json())
-          .then(app => {
-            document.getElementById('app-name').textContent = app.name;
-            document.documentElement.style.setProperty('--accent', (app.theme && app.theme.accent) || '#ff773c');
-            const pages = (app.spec && app.spec.pages || []);
-            document.getElementById('tabs').innerHTML = pages.map((p, i) =>
-              `<button class="rtab ${i + 1 === page ? 'active' : ''}" data-p="${i + 1}">${p.name}</button>`).join('');
-            const ents = (app.spec && app.spec.entities || []);
-            const p0 = pages[Math.min(page, pages.length) - 1] || pages[0] || {};
-            const ent = ents.find(e => e.slug === p0.entity) || ents[0];
-            const main = document.getElementById('main');
-            if (!ent) { main.innerHTML = '<div class="empty">No entities yet — ask the agent to build something.</div>'; return; }
-            const lsKey = 'b44r_' + app.id + '_' + ent.slug;
-            let rows;
-            try { rows = JSON.parse(localStorage.getItem(lsKey) || 'null') || ent.seed.map(r => Object.fromEntries(ent.fields.map((f, i) => [f.slug, r[i]]))); } catch { rows = []; }
-            const render = () => {
-              main.innerHTML = `<table><tr>${ent.fields.map(f => `<th>${f.name}</th>`).join('')}</tr>` +
-                rows.map(r => `<tr>${ent.fields.map(f => {
-                  const v = r[f.slug]; const s = f.type === 'checkbox' ? (v ? '✓' : '') : (v == null ? '' : String(v));
-                  return `<td>${s}</td>`; }).join('')}</tr>`).join('') + '</table>' +
-                `<div class="add"><b style="font-size:13px">Add ${ent.name}</b>${ent.fields.map(f => `<label>${f.name}</label>` +
-                  (f.type === 'checkbox' ? `<input type="checkbox" name="${f.slug}">` :
-                  `<input class="frmin" name="${f.slug}" placeholder="${f.type}">`)).join('')}
-                <button class="rtab" style="margin-top:10px;background:var(--accent);color:#fff;border-color:transparent">Add record</button></div>`;
-              main.querySelector('button.rtab').addEventListener('click', e => {
-                const rec = {};
-                ent.fields.forEach(f => {
-                  const el = main.querySelector(`[name="${f.slug}"]`);
-                  rec[f.slug] = f.type === 'checkbox' ? el.checked : el.value;
-                });
-                rows.push(rec); localStorage.setItem(lsKey, JSON.stringify(rows)); render(); toast();
+        const mApp = location.hash.match(/#app=([\w-]+)/);
+        const mPub = location.hash.match(/pub=([\w-]+)/);
+        let url, headers = {};
+        if (mApp) { url = `/api/apps/${mApp[1]}`; headers.Authorization = 'Bearer ' + localStorage.getItem('b44_token'); }
+        else if (mPub) url = `/api/published/${mPub[1]}`;
+        else { document.body.innerHTML = '<div class="empty">published app only</div>'; return; }
+
+        const showErr = t => { const e = document.getElementById('werr'); e.style.display = 'block'; e.textContent = String(t).slice(0, 4000); };
+
+        /* ───────── website mode: Babel + mini module loader ───────── */
+        const normPath = p => {
+          if (!p) return '';
+          const keep = [];
+          for (const seg of p.split('/')) {
+            if (!seg || seg === '.') continue;
+            if (seg === '..') keep.pop();
+            else keep.push(seg);
+          }
+          return keep.join('/');
+        };
+        const missResolvers = p => ['', '.js', '.jsx', '/index.js', '/index.jsx'].map(s => p + s);
+        function buildLoader(files, compiled) {
+          const tryFind = rel => missResolvers(normPath(rel)).find(c => compiled[c] != null);
+          const bare = req => req === 'react' || req === 'react-dom' ? { react: window.React, 'react-dom': window.ReactDOM }[req] : null;
+          function requireFrom(fromFile, req) {
+            const bareHit = bare(req);
+            if (bareHit !== null && bareHit !== undefined) return bareHit;
+            if (req.endsWith('.css')) return {};         // css handled globally
+            const target = req.startsWith('.') ? tryFind(normPath(fromFile.split('/').slice(0, -1).join('/') + '/' + req))
+                                              : (/^[^./].*/.test(req) ? null : null);
+            const hit = req.startsWith('.') ? target : null;
+            if (!hit) throw new Error('module not found: ' + req + ' (from ' + fromFile + ')');
+            return evalModule(hit, compiled);
+          }
+          function evalModule(path, compiled) {
+            const code = compiled[path];
+            if (code == null) throw new Error('module missing: ' + path);
+            const module = { exports: {} };
+            // eslint-disable-next-line no-new-func
+            new Function('require', 'module', 'exports', '"use strict";\n' + code)
+              (r => requireFrom(path, r), module, module.exports);
+            return module.exports;
+          }
+          return { entry: p => evalModule(p, compiled) };
+        }
+
+        function renderWebsite(app) {
+          document.body.classList.add('site-mode');
+          document.getElementById('site-root').style.display = 'block';
+          document.getElementById('wload').style.display = 'block';
+          const gen = app.gen_files || {};
+          // inject ALL css files
+          Object.keys(gen).filter(p => p.endsWith('.css')).forEach(p => {
+            const st = document.createElement('style');
+            st.dataset.src = p; st.textContent = gen[p];
+            document.head.appendChild(st);
+          });
+          setTimeout(() => {   // let the loader paint
+            try {
+              const src = Object.fromEntries(Object.entries(gen).filter(([p]) => /\.(jsx|js)$/i.test(p)));
+              const compiled = {};
+              for (const p of Object.keys(src)) {
+                compiled[p] = Babel.transform(src[p], {
+                  filename: p,
+                  presets: [[Babel.availablePresets.react, { runtime: 'classic' }],
+                            [Babel.availablePresets.env, { modules: 'commonjs', targets: { chrome: '90' } }]],
+                }).code;
+              }
+              const loader = buildLoader(src, compiled);
+              const entry = Object.keys(src).find(p => p === 'src/App.jsx') || Object.keys(src).find(p => /App\.jsx$/.test(p)) || Object.keys(src)[0];
+              const mod = loader.entry(entry);
+              const App = (mod && (mod.default || mod.App)) || null;
+              if (!App || typeof App !== 'function' && typeof App !== 'object')
+                throw new Error('entry module has no default React component: ' + entry);
+              ReactDOM.createRoot(document.getElementById('site-root'))
+                .render(React.createElement(App));
+              document.getElementById('wload').style.display = 'none';
+            } catch (e) {
+              document.getElementById('wload').style.display = 'none';
+              showErr('⚠ Generation compile error:\n\n' + (e && e.stack || e));
+            }
+          }, 60);
+        }
+
+        /* ───────── entity/tables mode (internal tools) ───────── */
+        function renderEntity(app) {
+          document.getElementById('app-name').textContent = app.name;
+          document.documentElement.style.setProperty('--accent', (app.theme && app.theme.accent) || '#ff773c');
+          const pages = (app.spec && app.spec.pages || []);
+          const page = parseInt((location.hash.match(/p=(\d)/) || [0, 1])[1] || 1);
+          document.getElementById('tabs').innerHTML = pages.map((p, i) =>
+            `<button class="rtab ${i + 1 === page ? 'active' : ''}" data-p="${i + 1}">${p.name}</button>`).join('');
+          const ents = (app.spec && app.spec.entities || []);
+          const p0 = pages[Math.min(page, pages.length) - 1] || pages[0] || {};
+          const ent = ents.find(e => e.slug === p0.entity) || ents[0];
+          const main = document.getElementById('main');
+          if (!ent) { main.innerHTML = '<div class="empty">No entities yet — ask the agent to build something.</div>'; return; }
+          const lsKey = 'b44r_' + app.id + '_' + ent.slug;
+          let rows;
+          try { rows = JSON.parse(localStorage.getItem(lsKey) || 'null') || ent.seed.map(r => Object.fromEntries(ent.fields.map((f, i) => [f.slug, r[i]]))); } catch { rows = []; }
+          const render = () => {
+            main.innerHTML = `<table><tr>${ent.fields.map(f => `<th>${f.name}</th>`).join('')}</tr>` +
+              rows.map(r => `<tr>${ent.fields.map(f => {
+                const v = r[f.slug]; const s = f.type === 'checkbox' ? (v ? '✓' : '') : (v == null ? '' : String(v));
+                return `<td>${s}</td>`; }).join('')}</tr>`).join('') + '</table>' +
+              `<div class="add"><b style="font-size:13px">Add ${ent.name}</b>${ent.fields.map(f => `<label>${f.name}</label>` +
+                (f.type === 'checkbox' ? `<input type="checkbox" name="${f.slug}">` :
+                `<input class="frmin" name="${f.slug}" placeholder="${f.type}">`)).join('')}
+              <button class="rtab" style="margin-top:10px;background:var(--accent);color:#fff;border-color:transparent">Add record</button></div>`;
+            main.querySelector('button.rtab').addEventListener('click', () => {
+              const rec = {};
+              ent.fields.forEach(f => {
+                const el = main.querySelector(`[name="${f.slug}"]`);
+                rec[f.slug] = f.type === 'checkbox' ? el.checked : el.value;
               });
-            };
-            const toast = () => {};
-            render();
-            document.getElementById('tabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-              location.hash = `#app=${m[1]}&p=${b.dataset.p}`;
-            }));
+              rows.push(rec); localStorage.setItem(lsKey, JSON.stringify(rows)); render();
+            });
+          };
+          render();
+          document.getElementById('tabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+            location.hash = `#app=${mApp[1]}&p=${b.dataset.p}`;
+          }));
+        }
+
+        fetch(url, { headers })
+          .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+          .then(app => {
+            if (app.mode === 'website' && app.gen_files && Object.keys(app.gen_files).length) renderWebsite(app);
+            else renderEntity(app);
           })
-          .catch(() => document.getElementById('main').innerHTML = '<div class="empty">Could not load app preview.</div>');
+          .catch(e => {
+            document.getElementById('wload').style.display = 'none';
+            document.getElementById('main').innerHTML = '<div class="empty">Could not load app preview.</div>';
+            if (document.getElementById('site-root').style.display === 'block') showErr(e);
+          });
       })();
     </script>
   </body>
